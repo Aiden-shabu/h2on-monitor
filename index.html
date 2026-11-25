@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>H2On System Monitor</title>
+<meta name="theme-color" content="#1240e0">
+<meta name="description" content="Monitoring dashboard for the H2On microturbine backup power system for traffic signals">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="H2On">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE work: a plant operator screen shown to engineers and the instructor
+   IDEA the SCADA mimic panel of a small hydro station: pipes, valves, machines, live tags
+   PICTURE the full system diagram, water flowing through the turbine branch and power moving to the signal
+   COLOUR white ground, ink, cobalt water #1240e0, green charging #00a862, red outage #e5352b, pale #eef2ff zones
+   TYPE Space Grotesk 600 + Inter
+   LAYOUT cobalt title strip with mode tabs; page tabs System view / Data; diagram, live values, controls, alarms, setup on page 1; tests, details, trends, log on page 2 */
+:root{color-scheme:light dark;--bg:light-dark(#ffffff,#0a0d18);--ink:light-dark(#0b0d14,#e8ebf5);--mute:light-dark(#545a6b,#9aa3ba);--zone:light-dark(#eef2ff,#121933);--line:light-dark(#d5dbec,#26304d);--water:light-dark(#1240e0,#5b82ff);--pipe:light-dark(#c9d4f7,#1d2a55);--chg:light-dark(#00a862,#2bd48c);--out:light-dark(#e5352b,#ff6b60);--warn:light-dark(#b76e00,#ffb547);--strip:#1240e0;--card:light-dark(#ffffff,#0f1426)}
+:root[data-theme=light]{color-scheme:light}
+:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font:16px/1.55 Inter,system-ui,sans-serif;overflow-x:clip}
+h1,h2,h3{font-family:"Space Grotesk",Inter,sans-serif;letter-spacing:-.02em;line-height:1.1;margin:0}
+.strip{background:var(--strip);color:#fff;padding:14px max(4vw,16px);display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center;justify-content:space-between}
+.strip h1{font-size:clamp(24px,3vw,34px);font-weight:700}
+.strip p{margin:2px 0 0;font-size:14px;opacity:.85}
+.tabs{display:flex;gap:6px;background:rgba(255,255,255,.14);padding:4px;border-radius:10px}
+.tabs button{all:unset;cursor:pointer;padding:10px 16px;border-radius:7px;font:600 15px "Space Grotesk",sans-serif;color:#fff;min-height:24px}
+.tabs button[aria-selected=true]{background:#fff;color:#1240e0}
+.tabs button:focus-visible{outline:3px solid #fff;outline-offset:2px}
+.pnav{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);display:flex;gap:4px;padding:0 max(4vw,16px)}
+.pnav button{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;padding:12px 16px;min-height:24px;font:600 16px "Space Grotesk",sans-serif;color:var(--mute);border-bottom:3px solid transparent}
+.pnav button[aria-current=page]{color:var(--water);border-bottom-color:var(--water)}
+.pnav button:focus-visible{outline:3px solid var(--water);outline-offset:-3px}
+.adot{width:10px;height:10px;border-radius:50%;background:var(--out)}
+.band{padding:clamp(18px,3vw,32px) max(4vw,16px)}
+.wrap{max-width:1240px;margin:0 auto}
+.status{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;margin-bottom:12px;font-size:15px}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;font-weight:600;white-space:nowrap;background:var(--zone);border:0;color:var(--ink);font-size:15px;font-family:Inter,sans-serif}
+.pill i{width:10px;height:10px;border-radius:50%;background:var(--chg)}
+.pill.bk i{background:var(--out)}
+.pill.fl i{background:var(--warn)}
+button.pill{cursor:pointer;min-height:36px}
+button.pill:focus-visible{outline:3px solid var(--water);outline-offset:2px}
+.clock{color:var(--mute);font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto}
+.mimic{border:1px solid var(--line);border-radius:12px;background:var(--zone)}
+.mimic svg{display:block;width:100%;min-width:860px;height:auto}
+.mimic text{font-family:Inter,sans-serif;fill:var(--ink)}
+.mimic .lab{font-size:15px;font-weight:600}
+.mimic .val{font-size:15px;fill:var(--water);font-weight:600;font-variant-numeric:tabular-nums}
+.mimic .valp{font-size:15px;fill:var(--chg);font-weight:600}
+.mimic .small{font-size:13px;fill:var(--mute)}
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px;margin-top:18px;align-items:start}
+.mt{margin-top:18px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+.panel h2{font-size:20px;margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.panel h3{font-size:17px;margin:16px 0 6px}
+.hrow{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.hrow h2{margin:0}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(9.5em,1fr));gap:10px}
+.tile{background:var(--zone);border-radius:10px;padding:10px 12px}
+.tile b{display:block;font:600 clamp(20px,2.4vw,26px) "Space Grotesk",sans-serif;white-space:nowrap;font-variant-numeric:tabular-nums}
+.tile span{font-size:13px;color:var(--mute)}
+.tile.alert b{color:var(--out)}
+.tile.caut b{color:var(--warn)}
+.ctl{display:grid;gap:14px}
+.row{display:grid;gap:6px}
+.row>label,.row>.lbl{font-weight:600;font-size:15px;display:flex;justify-content:space-between;gap:10px}
+.row label output{font-variant-numeric:tabular-nums;color:var(--water);white-space:nowrap}
+input[type=range]{width:100%;height:44px;accent-color:var(--water)}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button,.btn{font:600 15px Inter,sans-serif;min-height:44px;padding:8px 14px;border-radius:9px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-align:center}
+.seg button[aria-pressed=true]{background:var(--water);border-color:var(--water);color:#fff}
+.btn.big{width:100%;font-size:16px;background:var(--out);border-color:var(--out);color:#fff}
+.btn.big.restore{background:var(--chg);border-color:var(--chg)}
+.btn:focus-visible,.seg button:focus-visible,label.btn:focus-within{outline:3px solid var(--water);outline-offset:2px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.tests{display:grid;grid-template-columns:repeat(auto-fit,minmax(16em,1fr));gap:8px}
+.test{display:grid;grid-template-columns:3.2em minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:10px 12px;border-radius:10px;background:var(--zone)}
+.test b{font-family:"Space Grotesk",sans-serif}
+.test small{grid-column:2/4;color:var(--mute);font-size:13px}
+.chip{font-size:13px;font-weight:700;padding:3px 10px;border-radius:999px;white-space:nowrap;font-family:Inter,sans-serif;letter-spacing:0}
+.chip.p{background:color-mix(in srgb,var(--chg) 18%,transparent);color:var(--chg)}
+.chip.f,.chip.w{background:color-mix(in srgb,var(--out) 18%,transparent);color:var(--out)}
+.chip.c{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
+.chip.n{background:var(--line);color:var(--mute)}
+.alarms{display:grid;grid-template-columns:repeat(auto-fit,minmax(17em,1fr));gap:8px}
+.al{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:start;padding:10px 12px;border-radius:10px;background:var(--zone);border-left:5px solid var(--line)}
+.al b{font-weight:600}
+.al small{grid-column:1/3;color:var(--mute);font-size:13px}
+.al.c{border-left-color:var(--warn)}
+.al.w{border-left-color:var(--out)}
+.al.na{opacity:.6}
+.log{margin:0;padding:0;list-style:none;font-size:14px;max-height:360px;overflow:auto}
+.log li{display:grid;grid-template-columns:5.2em 5.6em minmax(0,1fr);gap:10px;padding:5px 0;border-top:1px solid var(--line);align-items:baseline}
+.log li>span:first-child{color:var(--mute);font-variant-numeric:tabular-nums;white-space:nowrap}
+.log .chip{justify-self:start}
+.trends{display:grid;grid-template-columns:repeat(auto-fit,minmax(19em,1fr));gap:16px 20px}
+.fig{position:relative;height:180px}
+.fig svg{position:absolute;inset:0;width:100%;height:100%}
+.fig svg text{font:13px Inter,sans-serif;fill:var(--mute)}
+.trends h3{font-size:16px;margin:0 0 2px}
+.lg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--mute);min-height:20px}
+.lg span{display:inline-flex;align-items:center;gap:6px}
+.lg i{width:16px;height:3px;border-radius:2px}
+.groups{display:grid;grid-template-columns:repeat(auto-fit,minmax(17em,1fr));gap:14px}
+.grp{background:var(--zone);border-radius:10px;padding:12px 14px}
+.grp h3{margin:0 0 6px;font-size:16px}
+.kv{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-top:1px solid var(--line);font-size:15px}
+.kv span{color:var(--mute)}
+.kv b{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+.kv b.w{color:var(--out)}.kv b.c{color:var(--warn)}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;background:var(--zone)}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.note{font-size:13px;color:var(--mute)}
+pre{background:var(--zone);border-radius:10px;padding:12px;font-size:13px;overflow-x:auto;margin:8px 0}
+.conn{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:10px;border:1px dashed var(--line)}
+.conn.ok{border-style:solid;border-color:color-mix(in srgb,var(--chg) 50%,var(--line))}
+.dot{width:12px;height:12px;border-radius:50%;background:var(--out);flex:none;margin-top:6px}
+.runbig{background:var(--zone);border-radius:10px;padding:12px 14px}
+.runbig b{display:block;font:700 clamp(28px,3.6vw,38px) "Space Grotesk",sans-serif;font-variant-numeric:tabular-nums;line-height:1.15}
+.runbig span{font-size:13px;color:var(--mute)}
+.mini{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.mini .tile b{font-size:20px}
+details summary{cursor:pointer;font-weight:600;min-height:32px}
+@media(max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){
+  body{padding-bottom:calc(64px + env(safe-area-inset-bottom))}
+  .pnav{position:fixed;top:auto;bottom:0;left:0;right:0;border-top:1px solid var(--line);border-bottom:0;padding:0 0 env(safe-area-inset-bottom)}
+  .pnav button{flex:1;justify-content:center;border-bottom:0;border-top:3px solid transparent;padding:14px 8px}
+  .pnav button[aria-current=page]{border-top-color:var(--water)}
+  table{font-size:13px}th,td{padding:6px 4px}
+  .stack thead{display:none}.stack tr{display:grid;padding-block:8px;border-bottom:1px solid var(--line)}.stack td{display:flex;justify-content:space-between;gap:12px;border:0;padding:2px 0;text-align:right}.stack td::before{content:attr(data-l);font-weight:600;text-align:left}
+  .log li{grid-template-columns:4.6em minmax(0,1fr)}.log li .chip{grid-column:2}.log li>span:last-child{grid-column:1/3}
+  .mini{grid-template-columns:minmax(0,1fr)}
+}
+@media(prefers-reduced-motion:reduce){.flow{animation:none!important}}
+</style>
+</head>
+<body>
+<header class="strip">
+  <div><h1>H2On System Monitor</h1><p>Microturbine backup power for traffic signals: water, turbine, battery and backup transfer in one view</p></div>
+  <div class="tabs" role="tablist" aria-label="Mode">
+    <button role="tab" id="tabSim" aria-selected="true">Simulation mode</button>
+    <button role="tab" id="tabField" aria-selected="false">Field mode</button>
+  </div>
+</header>
+<nav class="pnav" aria-label="Pages">
+  <button id="pbSystem" aria-current="page">System view</button>
+  <button id="pbData">Data <span class="adot" id="aDot" hidden aria-label="active alarm"></span></button>
+</nav>
+
+<main class="band"><div class="wrap">
+  <div class="status">
+    <span class="pill" id="srcPill"><i></i><span id="srcTxt">Signal on utility power</span></span>
+    <button class="pill" id="alPill" type="button"><span id="alTxt">No active alarms</span></button>
+    <span class="clock" id="clock">Sim time 0:00:00</span>
+    <span class="note" id="modeNote">Simplified model tuned to the full-size Chapter 5 and 6 results</span>
+  </div>
+
+  <!-- ================= PAGE 1: SYSTEM VIEW ================= -->
+  <div id="pgSystem">
+    <div class="mimic scroll"><svg id="mimic" viewBox="0 0 1000 440" role="img" aria-label="System diagram"></svg></div>
+    <p class="note" style="margin:6px 0 0">Normal operation: the main valve is closed and the two branch valves are open, so all water passes through the turbine branch. The battery feeds the UPS only during an outage (red line).</p>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>Live values</h2>
+        <div class="tiles" id="tiles"></div>
+      </section>
+
+      <section class="panel sim" id="simPanel">
+        <h2>Controls</h2>
+        <div class="ctl">
+          <div class="row"><label for="vel">Water velocity <output id="velOut"></output></label><input type="range" id="vel" min="0" max="8" step="0.1" value="5"></div>
+          <div class="row"><label for="pin">Inlet pressure <output id="pinOut"></output></label><input type="range" id="pin" min="30" max="55" step="0.5" value="46"></div>
+          <div class="row"><span class="lbl">Valves</span><div class="seg" id="valve"><button data-v="turbine" aria-pressed="true">Normal: all flow through turbine branch</button><button data-v="bypass" aria-pressed="false">Maintenance: turbine isolated</button></div></div>
+          <div class="row"><span class="lbl">Signal load</span><div class="seg" id="load"><button data-v="700" aria-pressed="true">700 W</button><button data-v="875" aria-pressed="false">875 W (+25%)</button></div></div>
+          <div class="row"><span class="lbl">Time speed</span><div class="seg" id="speed"><button data-v="1" aria-pressed="false">1×</button><button data-v="60" aria-pressed="true">60×</button><button data-v="600" aria-pressed="false">600×</button></div></div>
+          <button class="btn big" id="utilBtn">Cut utility power</button>
+          <button class="btn" id="resetBtn">Reset (battery 62%, utility on)</button>
+        </div>
+      </section>
+
+      <section class="panel field" id="fieldPanel" hidden>
+        <h2>Field status</h2>
+        <div class="ctl">
+          <div class="conn" id="conn"><span class="dot" id="fDot"></span><div><b id="fState">No device connected</b><div class="note">Last reading <span id="fLast">none</span>. Reading interval <span id="fInt">none</span>.</div></div></div>
+          <div class="row"><span class="lbl">Data source</span>
+            <div class="seg" id="srcSeg">
+              <button data-v="live" aria-pressed="false">Live device</button>
+              <label class="btn" for="csv" id="csvLbl">Load CSV log</label>
+              <button data-v="sample" aria-pressed="false">Sample log</button>
+            </div>
+            <input type="file" id="csv" accept=".csv,text/csv" class="vh">
+            <p class="note" id="fMsg" style="margin:0">Load a test log to replay it here. Columns are listed under Setup below.</p>
+          </div>
+          <div class="runbig"><span id="fRunLbl">Backup runtime if the utility is lost now</span><b id="fRun">–</b><span id="fRunE">Until empty: –</span></div>
+          <div><div class="lbl" style="font-weight:600;font-size:15px;margin-bottom:6px">Totals for this log</div>
+            <div class="mini"><div class="tile"><b id="fE">–</b><span>Energy generated</span></div><div class="tile"><b id="fO">–</b><span>Outages</span></div><div class="tile"><b id="fB">–</b><span>Time on backup</span></div></div></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel mt" id="alarmPanel">
+      <h2>Alarms <span class="chip n" id="alCount">0 active</span></h2>
+      <div class="alarms" id="alarms"></div>
+      <p class="note" style="margin:8px 0 0">Every alarm that starts or clears is written to the event and alarm log on the Data page.</p>
+    </section>
+
+    <section class="panel mt">
+      <h2>Setup</h2>
+      <h3 style="margin-top:0">Sensor plan</h3>
+      <p style="margin:0 0 10px;max-width:72ch">Each value on this page comes from one sensor. The supervisory controller reads them, sends them to the server, and the server stores them for the test records in Section 8.7.</p>
+      <div class="scroll"><table class="stack"><thead><tr><th>Tag</th><th>Sensor</th><th>Location</th><th>Measures</th><th>Used for</th></tr></thead><tbody id="sensors"></tbody></table></div>
+      <h3>Data format</h3>
+      <p style="margin:0 0 6px;max-width:72ch">The controller sends one JSON record per reading; a test log is the same fields as CSV columns, one row per reading. Event rows use the same time base in seconds with millisecond resolution, so T1 and T3 are measured on the controller, not on the web page.</p>
+      <button class="btn" id="copyBtn">Copy CSV header</button>
+      <pre id="fmt">t_s,flow_Lps,p1_psi,p2_psi,rpm,gen_W,chg_W,bat_V,bat_A,soc_pct,util_V,load_V,load_W,source,event
+1824.000,49.2,45.6,44.4,361,227,210,52.9,4.0,62.4,120.0,120.0,700,utility,
+3600.000,49.2,45.6,44.4,361,227,210,52.9,4.0,63.1,0.0,0.0,0,utility,utility_lost
+3600.017,49.2,45.6,44.4,361,227,210,52.6,-14.3,63.1,0.0,117.2,667,backup,load_on_backup</pre>
+      <details><summary>Model notes</summary>
+      <p class="note">Simulation mode uses a simplified model fitted to the full-size Simulink results, not the Simulink model itself. Turbine: axial-flow, K = 7.237, efficiency 0.758, maximum power at half of runaway speed (Chapter 5). Generator and charger: buck-boost with MPPT, 17 A constant-current and 56.8 V constant-voltage limits, speed-dependent generator loss. Pressure drop: turbine ρKv²/2 plus pipe and fittings (lower-bound outlet loss). UPS: transfer 17.0 ms, backup voltage 117.2 V (700 W) or 117.3 V (875 W), battery draw 960 W or 1,171 W, return 30 s after the utility is stable (Chapter 6). Flashing operation at 40% state of charge (TxDOT). Backup runtime assumes the turbine keeps charging during the outage at the present flow, and 430 W battery draw in flashing operation. For example 5 ft/s gives about 360 rpm and 210 W of charging, close to the Simulink 394 rpm and 208 W.</p></details>
+    </section>
+  </div>
+
+  <!-- ================= PAGE 2: DATA ================= -->
+  <div id="pgData" hidden>
+    <section class="panel">
+      <h2>Key tests T1–T3</h2>
+      <div class="tests" id="tests"></div>
+      <h3>Outage record</h3>
+      <div class="scroll"><table class="stack"><thead><tr><th>#</th><th>Utility lost</th><th>T1 transfer</th><th>T2 lowest voltage</th><th>Utility back</th><th>T3 return</th><th>Time on backup</th><th>Battery</th><th>Result</th></tr></thead><tbody id="outs"></tbody></table></div>
+    </section>
+
+    <section class="panel mt">
+      <h2>Detailed live values</h2>
+      <div class="groups" id="groups"></div>
+    </section>
+
+    <section class="panel mt">
+      <div class="hrow"><h2>Trends</h2><div class="seg" id="win"><button data-v="600" aria-pressed="false">10 min</button><button data-v="3600" aria-pressed="true">1 h</button><button data-v="7200" aria-pressed="false">2 h</button></div></div>
+      <div class="trends" id="trends"></div>
+    </section>
+
+    <section class="panel mt">
+      <div class="hrow"><h2>Event and alarm log</h2><button class="btn" id="dlBtn">Download log (CSV)</button></div>
+      <ul class="log" id="log"></ul>
+    </section>
+  </div>
+</div></main>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const RHO=997.19,A=0.032267,K=7.237,ETA=0.7584,FR=0.042,ETAE=0.941,CAP_WH=10240,ICC=17,FT=0.3048;
+const LOAD={700:{v:117.2,pl:667,draw:960},875:{v:117.3,pl:836,draw:1171}};
+const FLASH={v:117.5,pl:300,draw:430};
+const newCtx=()=>({hist:[],log:[],outs:[],al:{},tot:{eGen:0,eChg:0,bk:0}});
+const S=Object.assign({t:0,soc:62,util:true,src:'utility',pend:null,vel:5,pin:46,valve:'turbine',load:700,speed:60,flash:false},newCtx());
+const idle=newCtx();idle.al={off:'w'};
+let snap={},mode='sim',page='system',replay=null,win=3600;
+const ctx=()=>mode==='sim'?S:(replay||idle);
+const lastOut=c=>c.outs[c.outs.length-1];
+const ok=v=>v!==null&&v!==undefined&&!Number.isNaN(v);
+const num=(v,d,u)=>ok(v)?v.toFixed(d)+(u?' '+u:''):'–';
+
+function bvolt(soc,i){return 49.6+0.045*soc+0.012*i}
+function turbine(vft,vb){
+  if(S.valve!=='turbine'||vft<=0.05)return{rpm:0,psh:0,pc:0,gen:0,dpt:0};
+  const v=vft*FT,pmax=ETA*K*0.5*RHO*A*v**3,wr=2*52.78*(v/1.524);
+  const pb=x=>ETAE*pmax*4*x*(1-x)-FR*(x*wr)**2;
+  let x=ETAE*pmax*4/(2*ETAE*pmax*4+2*FR*wr*wr),p=pb(x);
+  let cap=ICC*vb;if(S.soc>=98)cap*=Math.max(0,(100-S.soc)/2);
+  if(p<=0){x=0.95;p=0}else if(p>cap){let lo=x,hi=1;for(let i=0;i<40;i++){const m=(lo+hi)/2;pb(m)>cap?lo=m:hi=m}x=(lo+hi)/2;p=cap}
+  const w=x*wr,psh=pmax*4*x*(1-x);
+  return{rpm:w*60/2/Math.PI,psh,pc:p,gen:Math.max(0,psh-FR*w*w),dpt:RHO*K*v*v/2/6894.76};
+}
+function addLog(c,t,msg,kind='ev'){c.log.unshift([t,msg,kind]);if(c.log.length>400)c.log.pop()}
+
+/* ---------- alarms ---------- */
+const AL=[
+  {id:'onbat',n:'On battery',d:'Utility lost. The signal is running on the battery.',f:s=>s.src==='backup'?'c':0},
+  {id:'lowbat',n:'Battery at or below 40%',d:'The signal goes to flashing operation (TxDOT) to save the battery.',f:s=>s.soc<=40?'w':0},
+  {id:'lowp',n:'Low downstream pressure',d:'Below 40 psi is a caution. Below 35 psi is a warning.',f:s=>s.flow<0.5?0:s.pout<35?'w':s.pout<40?'c':0},
+  {id:'over',n:'Turbine overspeed',d:'Above 850 rpm, higher than the 807 rpm design speed at 8 ft/s.',f:s=>s.rpm>850?'w':0},
+  {id:'nochg',n:'No charging',d:'Water is flowing through the turbine but no power reaches the battery.',f:(s,fd)=>fd?(s.flow>5&&s.gen<1?'c':0):(s.valve==='turbine'&&s.vel>1.5&&s.pc<1&&s.soc<98?'c':0)},
+  {id:'maint',n:'Turbine isolated',d:'Valves in the maintenance position, so the battery is not being charged.',f:(s,fd)=>fd?null:(s.valve==='bypass'?'c':0)},
+  {id:'off',n:'Sensor offline',d:'No reading from the field controller for more than 5 s.',f:(s,fd)=>fd?(s.offline?'w':0):null}
+];
+function evalAlarms(c,s,fd){
+  for(const a of AL){const v=a.f(s,fd),p=c.al[a.id];
+    if(v===null){c.al[a.id]=null;continue}
+    if(v&&!p)addLog(c,s.t,'Alarm: '+a.n+(v==='w'?' (warning)':''),v==='w'?'w':'c');
+    else if(!v&&p)addLog(c,s.t,'Cleared: '+a.n,'ok');
+    else if(v&&p&&v!==p)addLog(c,s.t,'Alarm: '+a.n+(v==='w'?' (warning)':' (caution)'),v==='w'?'w':'c');
+    c.al[a.id]=v}
+}
+const activeAlarms=c=>AL.filter(a=>c.al[a.id]);
+
+/* ---------- simulation ---------- */
+function cutUtil(){if(!S.util)return;S.util=false;S.pend=null;addLog(S,S.t,'Utility lost');S.src='backup';
+  S.outs.push({cut:S.t,T1:17.0,T2:null,rest:null,T3:null,socA:S.soc,socB:null,bk:0});addLog(S,S.t,'Load on backup after 17.0 ms')}
+function restoreUtil(){if(S.util)return;S.util=true;S.pend=S.t+30.03;const o=lastOut(S);if(o)o.rest=S.t;addLog(S,S.t,'Utility restored, waiting 30 s for a stable supply')}
+function step(dt){
+  S.t+=dt;
+  if(S.pend!==null&&S.t>=S.pend){S.src='utility';const o=lastOut(S);if(o){o.T3=S.pend-o.rest;o.socB=S.soc}S.pend=null;S.flash=false;addLog(S,S.t,'Load back on utility after '+(o?o.T3.toFixed(2):'30.03')+' s')}
+  const vb0=bvolt(S.soc,0),tb=turbine(S.vel,vb0);
+  let draw=25,lv=S.util&&S.src==='utility'?120:0,lp=S.load,bdraw=0;
+  if(S.src==='backup'){
+    if(S.soc<=40&&!S.flash){S.flash=true;addLog(S,S.t,'Battery at 40%: signal switched to flashing')}
+    if(S.soc<=0.5){lv=0;lp=0;draw=0}else{const L=S.flash?FLASH:LOAD[S.load];lv=L.v;lp=L.pl;draw=L.draw}
+    bdraw=draw;
+    const o=lastOut(S);if(o){if(lv>0)o.T2=o.T2===null?lv:Math.min(o.T2,lv);o.bk+=dt}
+    S.tot.bk+=dt;
+  }
+  S.tot.eGen+=tb.gen*dt/3600;S.tot.eChg+=tb.pc*dt/3600;
+  const net=tb.pc-draw;S.soc=Math.min(100,Math.max(0,S.soc+net*dt/3600/CAP_WH*100));
+  const ib=net/vb0,vb=bvolt(S.soc,ib);
+  const dpp=0.97*(S.valve==='turbine'?(S.vel/5)**2:0.15*(S.vel/5)**2);
+  const dtot=tb.dpt+dpp,q=A*S.vel*FT*1000;
+  snap={t:S.t,flow:q,vel:S.vel,pin:S.pin,p1:S.pin-dpp*0.4,p2:S.pin-dpp*0.4-tb.dpt,pout:S.pin-dtot,dpt:tb.dpt,dtot,rpm:tb.rpm,psh:tb.psh,gen:tb.gen,pc:tb.pc,vb,ib,soc:S.soc,uv:S.util?120:0,lv,lp,bdraw,src:S.src,flash:S.flash,valve:S.valve};
+  const h=S.hist;if(!h.length||S.t-h[h.length-1].t>=5){h.push(histPt(snap));while(h.length&&S.t-h[0].t>7200)h.shift()}
+  if(dt>0)evalAlarms(S,snap,false);
+}
+const histPt=s=>({t:s.t,soc:s.soc,lv:s.lv,rpm:s.rpm,p1:s.p1,p2:s.p2,gen:s.gen,pc:s.pc});
+function fmtT(t){t=Math.max(0,Math.round(t));return Math.floor(t/3600)+':'+String(Math.floor(t%3600/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0')}
+function fmtH(h){if(!isFinite(h))return'No limit';if(h<=0)return'0 min';const m=Math.round(h*60);return m<60?m+' min':Math.floor(m/60)+' h '+String(m%60).padStart(2,'0')+' min'}
+function fmtDur(sec){sec=Math.round(sec||0);return sec<60?sec+' s':sec<3600?Math.floor(sec/60)+' min '+String(sec%60).padStart(2,'0')+' s':fmtH(sec/3600)}
+function runtime(s,fd){
+  if(!s||!ok(s.soc))return null;
+  const pc=Math.max(0,s.pc||0),cap=CAP_WH/100;
+  let n1=(fd?LOAD[700].draw:LOAD[S.load].draw)-pc,n2=FLASH.draw-pc;
+  if(s.src==='backup'&&ok(s.ib)&&s.ib<0&&fd){const act=-s.vb*s.ib;if(s.soc>40)n1=act;else n2=act}
+  const h1=s.soc>40?(n1>0?(s.soc-40)*cap/n1:Infinity):0;
+  const h2=h1+(n2>0?Math.min(s.soc,40)*cap/n2:Infinity);
+  return{h1,h2,live:s.src==='backup'}
+}
+
+/* ---------- mimic diagram ---------- */
+const svg=$('mimic');
+svg.innerHTML=`
+<text x="20" y="40" class="lab">Water main, 8 in</text>
+<path d="M10 70H990" stroke="var(--pipe)" stroke-width="22" fill="none"/>
+<path id="mainFlow" class="flow" d="M10 70H90M620 70H990" stroke="var(--water)" stroke-width="4" stroke-dasharray="10 18" fill="none"/>
+<path id="midFlow" class="flow" d="M90 70H620" stroke="var(--water)" stroke-width="4" stroke-dasharray="10 18" fill="none"/>
+<path d="M90 70V170H620V70" stroke="var(--pipe)" stroke-width="18" fill="none"/>
+<path id="brFlow" class="flow" d="M90 70V170H620V70" stroke="var(--water)" stroke-width="4" stroke-dasharray="10 18" fill="none"/>
+${valve(355,70,'mainV')}${valve(90,120,'v1',1)}${valve(620,120,'v2',1)}
+<text x="300" y="40" class="small" id="mvTxt">Main valve closed</text>
+<text x="104" y="125" class="small">Tee A</text><text x="636" y="125" class="small">Tee B</text>
+<g transform="translate(190,170)"><circle r="17" fill="var(--card)" stroke="var(--water)" stroke-width="3"/><text y="5" text-anchor="middle" class="lab" style="font-size:12px">FT</text></g>
+<text x="190" y="212" text-anchor="middle" class="small">Flow</text><text x="190" y="232" text-anchor="middle" class="val" id="mFlow"></text>
+<g transform="translate(265,170)"><circle r="14" fill="var(--card)" stroke="var(--ink)" stroke-width="2"/><text y="5" text-anchor="middle" style="font-size:11px;font-weight:600">P1</text></g>
+<text x="265" y="212" text-anchor="middle" class="small">Before</text><text x="265" y="232" text-anchor="middle" class="val" id="mP1"></text>
+<g transform="translate(475,170)"><circle r="14" fill="var(--card)" stroke="var(--ink)" stroke-width="2"/><text y="5" text-anchor="middle" style="font-size:11px;font-weight:600">P2</text></g>
+<text x="475" y="212" text-anchor="middle" class="small">After</text><text x="475" y="232" text-anchor="middle" class="val" id="mP2"></text>
+<rect x="335" y="140" width="70" height="60" rx="8" fill="var(--card)" stroke="var(--water)" stroke-width="3"/>
+<g id="rotor" transform="translate(370,170)">${[0,72,144,216,288].map(a=>`<path d="M0 0 C6 -8 4 -20 0 -24 C-4 -20 -6 -8 0 0" transform="rotate(${a})" fill="var(--water)"/>`).join('')}<circle r="5" fill="var(--ink)"/></g>
+<text x="370" y="130" text-anchor="middle" class="lab">Turbine</text>
+<path d="M370 200V285" stroke="var(--ink)" stroke-width="5"/>
+<text x="384" y="248" class="val" id="mRpm"></text>
+<text x="384" y="268" class="small" id="mDp"></text>
+${box(370,315,'Generator','mGen')}${box(530,315,'Charger','mChg')}${box(690,315,'Battery','mBat')}${box(850,315,'UPS + transfer','mUps',130)}
+<path id="pw1" class="flow" d="M418 315H482" stroke="var(--chg)" stroke-width="5" stroke-dasharray="8 8" fill="none"/>
+<path id="pw2" class="flow" d="M578 315H642" stroke="var(--chg)" stroke-width="5" stroke-dasharray="8 8" fill="none"/>
+<path id="pw3" class="flow" d="M738 315H785" stroke="var(--out)" stroke-width="5" stroke-dasharray="8 8" fill="none"/>
+<text x="850" y="112" text-anchor="middle" class="lab">Utility 120 V</text>
+<path d="M835 165L850 125L865 165M850 165V285" stroke="var(--ink)" stroke-width="3" fill="none"/>
+<path id="pwU" class="flow" d="M850 170V285" stroke="var(--water)" stroke-width="5" stroke-dasharray="8 8" fill="none"/>
+<text x="864" y="215" class="val" id="mUv"></text>
+<path id="pwL" class="flow" d="M915 315H945" stroke="var(--chg)" stroke-width="5" stroke-dasharray="6 6" fill="none"/>
+<g transform="translate(965,270)"><rect x="-18" y="0" width="36" height="96" rx="8" fill="#1b1f2a"/>
+<circle id="lr" cy="18" r="10" fill="#4a1414"/><circle id="ly" cy="48" r="10" fill="#4a3a10"/><circle id="lg" cy="78" r="10" fill="#0f3a22"/></g>
+<text x="965" y="390" text-anchor="middle" class="small">Signal</text>
+<text x="965" y="410" text-anchor="middle" class="valp" id="mLoad"></text>`;
+function valve(x,y,id,vert){return `<g id="${id}" transform="translate(${x},${y})${vert?' rotate(90)':''}"><path d="M-14 -11L14 11V-11L-14 11Z" fill="var(--card)" stroke="var(--ink)" stroke-width="2.5"/></g>`}
+function box(x,y,name,id,w=96){return `<rect x="${x-w/2}" y="${y-30}" width="${w}" height="60" rx="9" fill="var(--card)" stroke="var(--ink)" stroke-width="2"/><text x="${x}" y="${y-6}" text-anchor="middle" class="lab">${name}</text><text x="${x}" y="${y+16}" text-anchor="middle" class="valp" id="${id}"></text>`}
+
+const tiles=[['flow','Flow',s=>num(s.flow,1,'L/s')],['dpt','Turbine pressure drop',s=>num(s.dpt,2,'psi')],['pout','Downstream pressure',s=>num(s.pout,1,'psi')],['rpm','Turbine speed',s=>ok(s.rpm)?Math.round(s.rpm)+' rpm':'–'],['psh','Shaft power',s=>ok(s.psh)?Math.round(s.psh)+' W':'–'],['gen','Generator output',s=>ok(s.gen)?Math.round(s.gen)+' W':'–'],['pc','Charging power',s=>ok(s.pc)?Math.round(s.pc)+' W':'–'],['ib','Battery current',s=>ok(s.ib)?(s.ib>0?'+':'')+s.ib.toFixed(1)+' A':'–'],['soc','Battery charge',s=>num(s.soc,1,'%').replace(' %','%')],['lv','Signal voltage',s=>num(s.lv,1,'V')],['lp','Signal power',s=>ok(s.lp)?Math.round(s.lp)+' W':'–'],['uv','Utility voltage',s=>num(s.uv,0,'V')]];
+$('tiles').innerHTML=tiles.map(([k,l])=>`<div class="tile" id="t_${k}"><b>–</b><span>${l}</span></div>`).join('');
+
+let off=0;
+function renderSystem(s){
+  if(!s||s.t===undefined)return;
+  for(const [k,,f] of tiles){const el=$('t_'+k);el.querySelector('b').textContent=f(s);el.className='tile'}
+  if(s.flow>0.5&&s.pout<35)$('t_pout').className='tile alert';else if(s.flow>0.5&&s.pout<40)$('t_pout').className='tile caut';
+  if(s.src==='backup')$('t_lv').className='tile caut';
+  if(s.soc<=40)$('t_soc').className='tile alert';
+  if(s.rpm>850)$('t_rpm').className='tile alert';
+  const v=s.valve||'turbine';
+  $('mFlow').textContent=num(s.flow,1,'L/s');$('mP1').textContent=num(s.p1,1,'psi');$('mP2').textContent=num(s.p2,1,'psi');
+  $('mRpm').textContent=Math.round(s.rpm||0)+' rpm';$('mDp').textContent='ΔP '+num(s.dpt,2,'psi');
+  $('mGen').textContent=Math.round(s.gen||0)+' W';$('mChg').textContent=Math.round(s.pc||0)+' W';$('mBat').textContent=num(s.soc,0)+'%';
+  $('mUps').textContent=s.src==='backup'?'Backup':'Utility';$('mUv').textContent=num(s.uv,0,'V');$('mLoad').textContent=Math.round(s.lp||0)+' W';
+  const tb=v==='turbine'&&s.flow>0.5;
+  $('brFlow').style.opacity=tb?1:0.12;$('midFlow').style.opacity=v==='turbine'?0:(s.flow>0.5?1:0.12);$('mainFlow').style.opacity=s.flow>0.5?1:0.12;
+  $('mvTxt').textContent=v==='turbine'?'Main valve closed':'Main valve open';$('mainV').querySelector('path').setAttribute('fill',v==='turbine'?'var(--ink)':'var(--card)');
+  for(const id of ['v1','v2'])$(id).querySelector('path').setAttribute('fill',v==='turbine'?'var(--card)':'var(--ink)');
+  $('pw1').style.opacity=$('pw2').style.opacity=s.pc>1?1:0.12;
+  $('pw3').style.opacity=s.src==='backup'?1:0;
+  $('pwU').style.opacity=s.uv>0?1:0.12;$('pwL').style.opacity=s.lv>0?1:0.12;$('pwL').setAttribute('stroke',s.src==='backup'?'var(--out)':'var(--water)');
+  const on=s.lv>0,ph=Math.floor(Date.now()/(s.flash?600:2000))%3;
+  $('lr').setAttribute('fill',on&&ph===0?'#ff3b30':'#4a1414');
+  $('ly').setAttribute('fill',on&&!s.flash&&ph===1?'#ffcc00':'#4a3a10');
+  $('lg').setAttribute('fill',on&&!s.flash&&ph===2?'#2bd48c':'#0f3a22');
+  const pill=$('srcPill');pill.className='pill'+(s.src==='backup'?(s.flash?' fl':' bk'):'');
+  $('srcTxt').textContent=s.src==='backup'?(s.flash?'Signal flashing on battery (40% or less)':'Signal on battery backup'):(S.pend!==null&&mode==='sim'?'Utility back, waiting 30 s':'Signal on utility power');
+  $('clock').textContent=(mode==='sim'?'Sim time ':'Log time ')+fmtT(s.t);
+  off-=1+(s.flow||0)*0.6;
+  if(!matchMedia('(prefers-reduced-motion: reduce)').matches){
+    for(const id of ['mainFlow','brFlow','midFlow'])$(id).style.strokeDashoffset=off;
+    for(const id of ['pw1','pw2','pw3','pwU','pwL'])$(id).style.strokeDashoffset=off*0.6;
+    $('rotor').setAttribute('transform',`translate(370,170) rotate(${(Date.now()/1000*Math.min(s.rpm||0,900)*0.6)%360})`);
+  }
+}
+function clearSystem(){for(const [k] of tiles){$('t_'+k).querySelector('b').textContent='–';$('t_'+k).className='tile'}
+  for(const id of ['mFlow','mP1','mP2','mRpm','mDp','mGen','mChg','mBat','mUps','mUv','mLoad'])$(id).textContent='–';
+  for(const id of ['mainFlow','brFlow','pw1','pw2','pwU','pwL'])$(id).style.opacity=0.12;$('midFlow').style.opacity=0;$('pw3').style.opacity=0;
+  for(const id of ['lr','ly','lg'])$(id).setAttribute('fill',{lr:'#4a1414',ly:'#4a3a10',lg:'#0f3a22'}[id]);
+  $('srcPill').className='pill fl';$('srcTxt').textContent='No field data';$('clock').textContent='Log time –'}
+
+/* ---------- alarm panel and status ---------- */
+function renderAlarms(c){
+  const act=activeAlarms(c);
+  $('alarms').innerHTML=AL.map(a=>{const v=c.al[a.id];
+    if(v===null)return'';
+    if(v===undefined&&mode==='sim'&&a.id==='off')return'';
+    const na=v===undefined;
+    const chip=na?'<span class="chip n">No data</span>':v==='w'?'<span class="chip w">Warning</span>':v==='c'?'<span class="chip c">Caution</span>':'<span class="chip p">Normal</span>';
+    return `<div class="al ${v||''}${na?' na':''}"><b>${a.n}</b>${chip}<small>${a.d}</small></div>`}).join('');
+  $('alCount').textContent=act.length+' active';$('alCount').className='chip '+(act.some(a=>c.al[a.id]==='w')?'w':act.length?'c':'n');
+  $('alPill').className='pill'+(act.some(a=>c.al[a.id]==='w')?' bk':act.length?' fl':'');
+  $('alPill').innerHTML=`<i></i><span id="alTxt">${act.length?act.length+(act.length>1?' active alarms':' active alarm'):'No active alarms'}</span>`;
+  $('aDot').hidden=!act.length;
+}
+
+/* ---------- data page ---------- */
+const TT=[['T1','Transfer to backup','65 ms or less',o=>o.T1,v=>v.toFixed(1)+' ms',v=>v<=65],['T2','Backup output voltage','110.4 V or more',o=>o.T2,v=>v.toFixed(1)+' V',v=>v>=110.4],['T3','Return to utility','30 s after the utility returns',o=>o.T3,v=>v.toFixed(2)+' s',v=>v>=30&&v<=31]];
+function renderTests(c){
+  $('tests').innerHTML=TT.map(([id,n,cr,g,f,pass])=>{let v=null;for(let i=c.outs.length-1;i>=0;i--){const x=g(c.outs[i]);if(ok(x)){v=x;break}}
+    return `<div class="test"><b>${id}</b><span>${n}: <b>${v===null?'not measured yet':f(v)}</b></span>${v===null?'<span class="chip n">Not run</span>':pass(v)?'<span class="chip p">Pass</span>':'<span class="chip f">Fail</span>'}<small>Pass criterion ${cr}. Latest outage.</small></div>`}).join('');
+  const L=['#','Utility lost','T1 transfer','T2 lowest voltage','Utility back','T3 return','Time on backup','Battery','Result'];
+  $('outs').innerHTML=c.outs.length?c.outs.map((o,i)=>{
+    const r=TT.map(([, , ,g, ,pass])=>{const v=g(o);return ok(v)?pass(v):null});
+    const res=r.includes(false)?'<span class="chip f">Fail</span>':r.includes(null)?'<span class="chip n">In progress</span>':'<span class="chip p">Pass</span>';
+    const cells=[i+1,fmtT(o.cut),ok(o.T1)?o.T1.toFixed(1)+' ms':'–',ok(o.T2)?o.T2.toFixed(1)+' V':'–',ok(o.rest)?fmtT(o.rest):'–',ok(o.T3)?o.T3.toFixed(2)+' s':'–',fmtDur(o.bk),num(o.socA,1)+'% to '+(ok(o.socB)?o.socB.toFixed(1)+'%':'now'),res];
+    return '<tr>'+cells.map((x,j)=>`<td class="num" data-l="${L[j]}">${x}</td>`).join('')+'</tr>'}).reverse().join('')
+    :`<tr><td colspan="9" class="note">${mode==='sim'?'No outage yet. Cut the utility power on the System view page to run T1 to T3.':'No outage in the loaded log yet.'}</td></tr>`;
+}
+function renderGroups(c,s){
+  const fd=mode==='field';
+  if(!s||s.t===undefined){$('groups').innerHTML='<p class="note">No field data yet. Load a test log on the System view page.</p>';return}
+  const rt=runtime(s,fd);
+  const W=(t,cls)=>({t,cls});
+  const G=[
+    ['Water and pressure',[['Flow',num(s.flow,1,'L/s')],['Velocity',ok(s.flow)?(s.flow/(A*FT*1000)).toFixed(2)+' ft/s':'–'],['Inlet pressure',fd?'–':num(s.pin,1,'psi')],['Pressure before turbine (P1)',num(s.p1,1,'psi')],['Pressure after turbine (P2)',num(s.p2,1,'psi')],['Turbine pressure drop',num(s.dpt,2,'psi')],['Total bypass pressure drop',num(s.dtot,2,'psi')],['Downstream pressure',W(num(s.pout,1,'psi'),s.flow>0.5&&s.pout<35?'w':s.flow>0.5&&s.pout<40?'c':'')]]],
+    ['Turbine and generator',[['Valve position',fd?'–':(s.valve==='turbine'?'Normal (turbine)':'Maintenance (isolated)')],['Turbine speed',W(ok(s.rpm)?Math.round(s.rpm)+' rpm':'–',s.rpm>850?'w':'')],['Shaft power',ok(s.psh)?Math.round(s.psh)+' W':'–'],['Generator output',ok(s.gen)?Math.round(s.gen)+' W':'–'],['Generator efficiency',ok(s.psh)&&s.psh>1?(s.gen/s.psh*100).toFixed(0)+'%':'–'],['Charger efficiency',ok(s.gen)&&s.gen>1&&ok(s.pc)?Math.min(100,s.pc/s.gen*100).toFixed(0)+'%':'–']]],
+    ['Charging and battery',[['Charging power',ok(s.pc)?Math.round(s.pc)+' W':'–'],['Battery voltage',num(s.vb,1,'V')],['Battery current',ok(s.ib)?(s.ib>0?'+':'')+s.ib.toFixed(1)+' A':'–'],['State of charge',W(num(s.soc,1)+'%',s.soc<=40?'w':'')],['Stored energy',ok(s.soc)?(s.soc*CAP_WH/100/1000).toFixed(2)+' kWh':'–'],[rt&&rt.live?'Runtime to 40% (now)':'Runtime to 40% if utility lost',rt?fmtH(rt.h1):'–'],[rt&&rt.live?'Runtime to empty (now)':'Runtime to empty if utility lost',rt?fmtH(rt.h2):'–']]],
+    ['Backup and signal',[['Power source',W(s.src==='backup'?'Battery backup':'Utility',s.src==='backup'?'c':'')],['Signal mode',s.lv>0?(s.flash?'Flashing':'Normal'):'Off'],['Utility voltage',num(s.uv,0,'V')],['Signal voltage',num(s.lv,1,'V')],['Signal power',ok(s.lp)?Math.round(s.lp)+' W':'–'],['Battery draw for the signal',s.src==='backup'?(fd?(ok(s.ib)&&s.ib<0?Math.round(-s.vb*s.ib+(s.pc||0))+' W':'–'):Math.round(s.bdraw)+' W'):'0 W']]],
+    [fd?'Totals for this log':'Totals for this session',[['Energy generated',(c.tot.eGen/1000).toFixed(2)+' kWh'],['Energy into battery',(c.tot.eChg/1000).toFixed(2)+' kWh'],['Outages',String(c.outs.length)],['Total time on backup',fmtDur(c.tot.bk)]]]
+  ];
+  $('groups').innerHTML=G.map(([h,rows])=>`<div class="grp"><h3>${h}</h3>${rows.map(([k,v])=>{const o=typeof v==='object'?v:{t:v,cls:''};return `<div class="kv"><span>${k}</span><b class="${o.cls}">${o.t}</b></div>`}).join('')}</div>`).join('');
+}
+const KIND={ev:['n','Event'],c:['c','Alarm'],w:['w','Alarm'],ok:['p','Cleared']};
+function renderLog(c){
+  $('log').innerHTML=c.log.length?c.log.map(([t,m,k])=>{const [cl,lb]=KIND[k]||KIND.ev;return `<li><span>${fmtT(t)}</span><span class="chip ${cl}">${lb}</span><span>${m}</span></li>`}).join('')
+    :`<li><span>–</span><span></span><span>${mode==='sim'?'Nothing logged yet.':'Load a test log to see events and alarms.'}</span></li>`;
+}
+
+/* ---------- trends ---------- */
+const TR=[
+  {id:'soc',n:'Battery charge (%)',lo:0,hi:100,k:[['soc','var(--chg)','State of charge']]},
+  {id:'lv',n:'Signal voltage (V)',lo:0,hi:130,k:[['lv','var(--out)','Signal voltage']]},
+  {id:'rpm',n:'Turbine speed (rpm)',lo:0,hi:1000,k:[['rpm','var(--water)','Turbine speed']]},
+  {id:'p',n:'Pressure (psi)',auto:1,k:[['p1','var(--water)','P1 before turbine'],['p2','var(--warn)','P2 after turbine']]},
+  {id:'pw',n:'Power (W)',auto:2,k:[['gen','var(--water)','Generator output'],['pc','var(--chg)','Charging power']]}
+];
+$('trends').innerHTML=TR.map(g=>`<div><h3>${g.n}</h3><div class="lg">${g.k.length>1?g.k.map(([,c,l])=>`<span><i style="background:${c}"></i>${l}</span>`).join(''):''}</div><div class="fig"><svg id="g_${g.id}"></svg></div></div>`).join('');
+function drawTrends(hAll){
+  const tEnd=hAll.length?hAll[hAll.length-1].t:0,h=hAll.filter(p=>p.t>=tEnd-win);
+  for(const g of TR){const s=$('g_'+g.id);if(!s)continue;const W=s.clientWidth,H=s.clientHeight;if(!W)continue;
+    const L=40,R=8,T=8,B=22;if(!h.length){s.innerHTML=`<text x="${W/2}" y="${H/2}" text-anchor="middle">No data yet</text>`;continue}
+    let lo=g.lo,hi=g.hi;
+    if(g.auto){const vs=h.flatMap(p=>g.k.map(([k])=>p[k])).filter(ok);const mn=Math.min(...vs),mx=Math.max(...vs);
+      if(g.auto===1){lo=Math.floor(mn-1);hi=Math.ceil(mx+1)}else{lo=0;hi=Math.max(100,Math.ceil(mx/100)*100)}}
+    const t0=Math.max(h[0].t,tEnd-win),t1=Math.max(tEnd,t0+60),X=t=>L+(t-t0)/(t1-t0)*(W-L-R),Y=v=>T+(1-(v-lo)/(hi-lo||1))*(H-T-B);
+    const ticks=[lo,(lo+hi)/2,hi].map(v=>`<line x1="${L}" x2="${W-R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--line)"/><text x="${L-5}" y="${Y(v)+4}" text-anchor="end">${Math.round(v*10)/10}</text>`).join('');
+    const lines=g.k.map(([k,c])=>`<polyline points="${h.filter(p=>ok(p[k])).map(p=>X(p.t).toFixed(1)+','+Y(p[k]).toFixed(1)).join(' ')}" fill="none" stroke="${c}" stroke-width="2.5" stroke-linejoin="round"/>`).join('');
+    s.innerHTML=ticks+lines+`<text x="${L}" y="${H-4}">${fmtT(t0)}</text><text x="${W-R}" y="${H-4}" text-anchor="end">${fmtT(tEnd)}</text>`}
+}
+const ro=new ResizeObserver(()=>drawTrends(ctx().hist));ro.observe($('trends'));
+
+/* ---------- sensors ---------- */
+const SENS=[['FT','Flow meter','Bypass branch, after Tee A','Flow rate and velocity','T5; no-charging alarm'],['P1, P2','Pressure transducers','Before and after the turbine','Pressure and turbine ΔP','T6; low downstream pressure alarm'],['ST','Hall-effect speed sensor','Turbine shaft','Turbine rpm','T5; overspeed alarm'],['GV, GI','DC voltage and current sensor','Rectifier output','Generator power','T5, T7'],['CI','DC current sensor','Charger output','Charging power into the battery side','T4, T7; no-charging alarm'],['BV, BI','Battery voltage and current (shunt) with BMS state of charge','Battery terminals','Charge and discharge, SOC','T4, T7; 40% flashing alarm; backup runtime'],['UV','AC voltage sensor','Utility input','Utility present or lost','T1, T3; on-battery alarm'],['LV, LI','AC voltage and current sensor','Signal load','Load voltage and power','T1, T2'],['MS','UPS status contact','UPS','Utility or backup mode','M4']];
+$('sensors').innerHTML=SENS.map(r=>'<tr>'+r.map((c,i)=>`<td data-l="${['Tag','Sensor','Location','Measures','Used for'][i]}">${c}</td>`).join('')+'</tr>').join('');
+
+/* ---------- controls ---------- */
+function setSeg(id,val){for(const b of $(id).querySelectorAll('button'))b.setAttribute('aria-pressed',b.dataset.v==String(val))}
+function syncCtl(){$('velOut').textContent=S.vel.toFixed(1)+' ft/s ('+(S.vel*FT).toFixed(2)+' m/s)';$('pinOut').textContent=S.pin.toFixed(1)+' psi';
+  const b=$('utilBtn');b.textContent=S.util?'Cut utility power':'Restore utility power';b.className='btn big'+(S.util?'':' restore');
+  setSeg('valve',S.valve);setSeg('load',S.load);setSeg('speed',S.speed)}
+$('vel').oninput=e=>{S.vel=+e.target.value;syncCtl()};
+$('pin').oninput=e=>{S.pin=+e.target.value;syncCtl()};
+for(const [id,key,isNum] of [['valve','valve',0],['load','load',1],['speed','speed',1]])
+  $(id).onclick=e=>{const b=e.target.closest('button');if(!b)return;const nv=isNum?+b.dataset.v:b.dataset.v;if(S[key]===nv)return;S[key]=nv;
+    if(key==='valve')addLog(S,S.t,S.valve==='turbine'?'Main valve closed, branch valves open: all flow through the turbine':'Branch valves closed, main valve open: turbine isolated');
+    if(key==='load')addLog(S,S.t,'Signal load set to '+S.load+' W');syncCtl()};
+$('utilBtn').onclick=()=>{S.util?cutUtil():restoreUtil();syncCtl();slow()};
+$('win').onclick=e=>{const b=e.target.closest('button');if(!b)return;win=+b.dataset.v;setSeg('win',win);drawTrends(ctx().hist)};
+function reset(){Object.assign(S,newCtx(),{t:0,soc:62,util:true,src:'utility',pend:null,flash:false});
+  /* open mid-use: one earlier outage already recorded */
+  for(let i=0;i<3600;i++){step(1);if(i===1800)cutUtil();if(i===2400)restoreUtil()}
+  syncCtl();slow()}
+$('resetBtn').onclick=reset;
+$('copyBtn').onclick=async()=>{try{await navigator.clipboard.writeText($('fmt').textContent.split('\n')[0]);$('copyBtn').textContent='Copied'}catch(e){$('copyBtn').textContent='Select the text to copy'}};
+$('alPill').onclick=()=>{setPage('system');$('alarmPanel').scrollIntoView({behavior:'smooth',block:'start'})};
+$('dlBtn').onclick=()=>{const c=ctx(),rows=['t_s,type,message'].concat(c.log.slice().reverse().map(([t,m,k])=>[t.toFixed(3),(KIND[k]||KIND.ev)[1].toLowerCase(),'"'+m.replace(/"/g,'""')+'"'].join(',')));
+  try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([rows.join('\n')],{type:'text/csv'}));a.download=(mode==='sim'?'h2on_sim_log':'h2on_field_log')+'.csv';document.body.appendChild(a);a.click();a.remove()}catch(e){$('dlBtn').textContent='Download blocked here'}};
+
+/* ---------- field mode: data sources and replay ---------- */
+function parseCSV(txt){const L=txt.trim().split(/\r?\n/),hd=L[0].split(',').map(s=>s.trim());
+  return L.slice(1).map(l=>{const c=l.split(','),o={};hd.forEach((h,i)=>{const r=(c[i]||'').trim();o[h]=r===''||isNaN(+r)?r:+r});return o})}
+function sampleCSV(){const keep=Object.assign({},S);const rows=['t_s,flow_Lps,p1_psi,p2_psi,rpm,gen_W,chg_W,bat_V,bat_A,soc_pct,util_V,load_V,load_W,source,event'];
+  Object.assign(S,newCtx(),{t:0,soc:70,util:true,src:'utility',pend:null,flash:false,vel:5,pin:46,valve:'turbine',load:700});
+  const row=(s,ev)=>rows.push([s.t.toFixed(3),s.flow.toFixed(1),s.p1.toFixed(1),s.p2.toFixed(1),Math.round(s.rpm),Math.round(s.gen),Math.round(s.pc),s.vb.toFixed(1),s.ib.toFixed(1),s.soc.toFixed(1),s.uv.toFixed(1),s.lv.toFixed(1),Math.round(s.lp),s.src,ev].join(','));
+  for(let i=0;i<5400;i+=10){step(10);row(snap,'');
+    if(i===1800){cutUtil();row(Object.assign({},snap,{uv:0,lv:0,lp:0,src:'utility'}),'utility_lost');S.t+=0.017;step(0);row(snap,'load_on_backup')}
+    if(i===3600){restoreUtil();step(0);row(snap,'utility_restored');step(30.03);row(snap,'load_on_utility')}}
+  Object.assign(S,keep);return rows.join('\n')}
+function rowSnap(r){const p1=ok(r.p1_psi)?r.p1_psi:null,p2=ok(r.p2_psi)?r.p2_psi:null,vb=r.bat_V,ib=r.bat_A,soc=r.soc_pct,src=r.source==='backup'?'backup':'utility';
+  return{t:r.t_s,flow:r.flow_Lps,p1,p2,pout:ok(p2)?p2-0.5:null,dpt:ok(p1)&&ok(p2)?Math.max(0,p1-p2):null,dtot:null,rpm:r.rpm,psh:null,gen:r.gen_W,pc:ok(r.chg_W)?r.chg_W:(ok(vb)&&ok(ib)&&ib>0?vb*ib:null),vb,ib,soc,uv:r.util_V,lv:r.load_V,lp:r.load_W,src,flash:src==='backup'&&soc<=40,offline:false}}
+function startReplay(rows,label){
+  if(!rows.length||rows[0].t_s===undefined||rows[0].t_s===''){$('fMsg').textContent='The file has no t_s column. Check the data format under Setup.';return}
+  const dts=[];for(let i=1;i<Math.min(rows.length,40);i++){const d=rows[i].t_s-rows[i-1].t_s;if(d>0.5)dts.push(d)}dts.sort((a,b)=>a-b);
+  replay=Object.assign(newCtx(),{rows,i:0,label,prevT:null,last:null,done:false,intv:dts.length?dts[Math.floor(dts.length/2)]:null});
+  addLog(replay,rows[0].t_s,'Replay started: '+label);
+  $('fMsg').textContent=rows.length+' readings loaded. T1 to T3 are calculated from the event rows as the log plays.';
+  setSeg('srcSeg',label.startsWith('sample')?'sample':'csv');$('csvLbl').style.cssText=label.startsWith('sample')?'':'background:var(--water);border-color:var(--water);color:#fff';
+  slow()}
+function feedRow(r){const c=replay,s=rowSnap(r),dt=c.prevT===null?0:Math.max(0,s.t-c.prevT);c.prevT=s.t;
+  c.tot.eGen+=(s.gen||0)*dt/3600;c.tot.eChg+=(s.pc||0)*dt/3600;
+  let o=lastOut(c);
+  if(r.event){{const e=String(r.event).replace(/_/g,' ');addLog(c,s.t,e.charAt(0).toUpperCase()+e.slice(1))}
+    if(r.event==='utility_lost'){c.outs.push({cut:s.t,T1:null,T2:null,rest:null,T3:null,socA:s.soc,socB:null,bk:0});o=lastOut(c)}
+    else if(o&&r.event==='load_on_backup')o.T1=(s.t-o.cut)*1000;
+    else if(o&&r.event==='utility_restored')o.rest=s.t;
+    else if(o&&r.event==='load_on_utility'&&ok(o.rest)){o.T3=s.t-o.rest;o.socB=s.soc}}
+  if(s.src==='backup'){c.tot.bk+=dt;if(o&&!ok(o.socB)){o.bk+=dt;if(s.lv>0)o.T2=o.T2===null?s.lv:Math.min(o.T2,s.lv)}}
+  c.hist.push(histPt(s));while(c.hist.length&&s.t-c.hist[0].t>7200)c.hist.shift();
+  evalAlarms(c,s,true);c.last=s}
+function renderField(){
+  const c=replay;
+  if(!c){$('fState').textContent='No device connected';$('fDot').style.background='var(--out)';$('conn').className='conn';$('fLast').textContent='none';$('fInt').textContent='none';
+    $('fRun').textContent='–';$('fRunE').textContent='Until empty: –';$('fE').textContent=$('fO').textContent=$('fB').textContent='–';return}
+  const s=c.last;
+  $('fState').textContent=(c.done?'Replay finished: ':'Replaying: ')+c.label;$('fDot').style.background=c.done?'var(--mute)':'var(--chg)';$('conn').className='conn ok';
+  $('fLast').textContent=s?'at log time '+fmtT(s.t):'none';$('fInt').textContent=c.intv?c.intv.toFixed(c.intv<10?1:0)+' s':'unknown';
+  const rt=runtime(s,true);
+  $('fRunLbl').textContent=rt&&rt.live?'Backup runtime left until flashing (40%)':'Backup runtime until flashing (40%) if the utility is lost now';
+  $('fRun').textContent=rt?fmtH(rt.h1):'–';$('fRunE').textContent='Until empty: '+(rt?fmtH(rt.h2):'–');
+  $('fE').textContent=(c.tot.eGen/1000).toFixed(2)+' kWh';$('fO').textContent=String(c.outs.length);$('fB').textContent=fmtDur(c.tot.bk);
+}
+$('csv').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(t=>startReplay(parseCSV(t),f.name)).catch(()=>{$('fMsg').textContent='Could not read that file.'})};
+$('srcSeg').onclick=e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.v==='live'){$('fMsg').textContent='The live connection (controller to database to this page) is added in Senior Design II. For now, load a CSV log or the sample log.';return}
+  if(b.dataset.v==='sample')startReplay(parseCSV(sampleCSV()),'sample log (generated by the simulation model, not measured data)')};
+
+/* ---------- pages and modes ---------- */
+function setPage(p){page=p;$('pgSystem').hidden=p!=='system';$('pgData').hidden=p!=='data';
+  $('pbSystem').toggleAttribute('aria-current',p==='system');$('pbData').toggleAttribute('aria-current',p==='data');
+  if(p==='system')$('pbSystem').setAttribute('aria-current','page');else $('pbData').setAttribute('aria-current','page');
+  slow()}
+$('pbSystem').onclick=()=>setPage('system');$('pbData').onclick=()=>{setPage('data');scrollTo({top:0})};
+function setMode(m){mode=m;$('tabSim').setAttribute('aria-selected',m==='sim');$('tabField').setAttribute('aria-selected',m==='field');
+  $('simPanel').hidden=m!=='sim';$('fieldPanel').hidden=m!=='field';
+  $('modeNote').textContent=m==='sim'?'Simplified model tuned to the full-size Chapter 5 and 6 results':'Values from the field controller or a loaded test log';
+  if(m==='sim')renderSystem(snap);else if(replay&&replay.last)renderSystem(replay.last);else clearSystem();
+  slow()}
+$('tabSim').onclick=()=>setMode('sim');$('tabField').onclick=()=>setMode('field');
+
+/* slow refresh: alarms, field panel, data page */
+function slow(){const c=ctx(),s=mode==='sim'?snap:(replay?replay.last:null);
+  renderAlarms(c);if(mode==='field')renderField();
+  if(page==='data'){renderTests(c);renderGroups(c,s);renderLog(c);drawTrends(c.hist)}}
+
+/* ---------- loop ---------- */
+let last=performance.now(),acc=0,slowT=0;
+function tick(now){const real=Math.min(0.25,(now-last)/1000);last=now;
+  if(mode==='sim'){let dt=real*S.speed;while(dt>0){const d=Math.min(dt,5);step(d);dt-=d}renderSystem(snap)}
+  else if(replay){acc+=real;if(acc>0.15&&!replay.done){acc=0;const r=replay.rows[replay.i];if(r){feedRow(r);replay.i++}else{replay.done=true;addLog(replay,replay.last?replay.last.t:0,'Replay finished')}}
+    if(replay.last)renderSystem(replay.last)}
+  slowT+=real;if(slowT>=0.5){slowT=0;slow()}
+  requestAnimationFrame(tick)}
+reset();renderSystem(snap);slow();requestAnimationFrame(tick);
+
+/* ---------- installable app (works when hosted on GitHub Pages) ---------- */
+try{if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}catch(e){}
+}
+</script>
+</body>
+</html>
